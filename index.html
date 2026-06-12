@@ -1,0 +1,129 @@
+<!doctype html>
+<html lang="en"><head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="theme-color" content="#0e1116">
+<title>Poké Restock — live</title>
+<style>
+  :root { --bg:#0e1116; --card:#171c24; --line:#242b36; --text:#e6e9ee;
+          --dim:#8b93a1; --green:#3fd07a; --red:#ff5d5d; --gold:#ffd166; }
+  * { box-sizing:border-box; margin:0; }
+  body { background:var(--bg); color:var(--text);
+         font:16px/1.45 -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+         padding:14px; max-width:640px; margin:0 auto; }
+  h1 { font-size:20px; display:flex; align-items:center; gap:8px; }
+  h1 .dot { width:10px; height:10px; border-radius:50%; background:var(--green);
+            animation:pulse 2s infinite; }
+  h1 .dot.stale { background:var(--red); animation:none; }
+  @keyframes pulse { 50% { opacity:.35; } }
+  .sub { color:var(--dim); font-size:13px; margin:4px 0 14px; }
+  h2 { font-size:14px; color:var(--dim); margin:20px 0 8px;
+       text-transform:uppercase; letter-spacing:.6px; }
+  .card { background:var(--card); border:1px solid var(--line); border-radius:14px;
+          padding:13px 15px; margin-bottom:8px; display:flex; gap:12px;
+          align-items:center; justify-content:space-between; }
+  .card.watched { border-color:rgba(255,209,102,.55); }
+  .card a { color:var(--text); text-decoration:none; font-weight:600;
+            font-size:16.5px; }
+  .meta { color:var(--dim); font-size:13px; margin-top:3px; }
+  .settag { color:var(--gold); border:1px solid rgba(255,209,102,.4);
+            border-radius:999px; padding:1px 8px; font-size:11px; margin-left:6px;
+            white-space:nowrap; }
+  .badge { font-size:12.5px; font-weight:700; padding:5px 11px;
+           border-radius:999px; white-space:nowrap; flex-shrink:0; }
+  .in   { background:rgba(63,208,122,.18); color:var(--green); }
+  .soon { background:rgba(255,209,102,.15); color:var(--gold); }
+  .news { background:rgba(139,147,161,.15); color:var(--dim); }
+  .alert{ border-left:3px solid var(--gold); padding-left:10px; margin-bottom:9px;
+          font-size:14px; }
+  .alert .when { color:var(--dim); font-size:12px; }
+  .empty { color:var(--dim); font-size:14px; padding:10px 4px; }
+  .urgent { background:rgba(255,93,93,.14); border:1px solid var(--red);
+            border-radius:14px; padding:13px 15px; margin-bottom:10px;
+            font-weight:700; color:var(--red); animation:pulse 1.2s infinite; }
+</style></head><body>
+<h1><span class="dot" id="dot"></span>Poké Restock — live</h1>
+<div class="sub">Read-only board. Alerts only — you make the purchase.
+  Updated <span id="upd">…</span> · refreshes every 60 s</div>
+<div id="banner"></div>
+<h2>In stock now</h2><div id="instock"></div>
+<h2>Recent alerts</h2><div id="alerts"></div>
+<h2>Restock news</h2><div id="news"></div>
+<h2>Release calendar</h2><div id="cal"></div>
+<script>
+const STATUS_URL = "https://raw.githubusercontent.com/Merlin-Machines/poke-status/data/status.json";
+const NTFY_URL = "https://ntfy.sh/poke-restock-43d3462676/json?poll=1&since=72h";
+const ago = iso => {
+  const m = Math.round((Date.now() - new Date(iso)) / 60000);
+  return m < 1 ? "just now" : m < 60 ? m + " min ago"
+    : m < 1440 ? Math.round(m/60) + " h ago" : Math.round(m/1440) + " d ago";
+};
+const esc = s => (s || "").replace(/[&<>"]/g, c =>
+  ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
+
+async function refresh() {
+  try {
+    const d = await (await fetch(STATUS_URL, {cache:"no-store"})).json();
+    const mins = (Date.now() - new Date(d.generated_at)) / 60000;
+    document.getElementById("upd").textContent = ago(d.generated_at) +
+      (mins > 30 ? " — tracker may be offline" : "");
+    document.getElementById("dot").className = "dot" + (mins > 30 ? " stale" : "");
+
+    const stock = d.products.filter(p => p.store !== "news" && p.in_stock);
+    document.getElementById("instock").innerHTML = stock.length ? stock.map(p => `
+      <div class="card${p.set ? " watched" : ""}"><div>
+        <a href="${esc(p.url || "#")}" target="_blank">${esc(p.name)}</a>
+        ${p.set ? `<span class="settag">${esc(p.set)}</span>` : ""}
+        <div class="meta">${esc(p.store_label)}${p.price ? " · $" +
+          Number(p.price).toFixed(2) : ""} · ${ago(p.updated_at)}</div></div>
+        <span class="badge in">IN STOCK</span>
+      </div>`).join("")
+      : `<div class="empty">Nothing in stock right now — alerts fire the moment
+         that changes.</div>`;
+
+    const news = d.products.filter(p => p.store === "news")
+      .sort((a,b) => (b.updated_at||"").localeCompare(a.updated_at||"")).slice(0,8);
+    document.getElementById("news").innerHTML = news.length ? news.map(p => `
+      <div class="card"><div>
+        <a href="${esc(p.url || "#")}" target="_blank">${esc(p.name)}</a>
+        ${p.set ? `<span class="settag">${esc(p.set)}</span>` : ""}</div>
+        <span class="badge news">news</span>
+      </div>`).join("") : `<div class="empty">No recent chatter.</div>`;
+
+    const today = new Date().toISOString().slice(0,10);
+    const cal = (d.calendar?.sets || [])
+      .filter(s => s.street_date ? s.street_date >= today :
+        true)
+      .slice(0,6);
+    document.getElementById("cal").innerHTML = cal.length ? cal.map(s => `
+      <div class="card${s.set ? " watched" : ""}"><div>
+        <span style="font-weight:600">${esc(s.series && !s.name.includes(s.series)
+          ? s.series + ": " + s.name : s.name)}</span>
+        ${s.set ? `<span class="settag">${esc(s.set)}</span>` : ""}
+        <div class="meta">${esc(s.notes || "")}</div></div>
+        <span class="badge soon">${s.street_date ? esc(s.street_date)
+          : "TBA · " + esc(s.expected || "")}</span>
+      </div>`).join("") : `<div class="empty">No upcoming dates.</div>`;
+  } catch (e) { /* keep last render */ }
+
+  try {
+    const txt = await (await fetch(NTFY_URL, {cache:"no-store"})).text();
+    const msgs = txt.trim().split("\n").filter(Boolean)
+      .map(l => { try { return JSON.parse(l); } catch { return null; } })
+      .filter(m => m && m.event === "message").reverse();
+    const queue = msgs.find(m => m.title === "DROP IN PROGRESS" &&
+      Date.now()/1000 - m.time < 4*3600);
+    document.getElementById("banner").innerHTML = queue
+      ? `<div class="urgent">🚨 ${esc(queue.message)} — tap an alert below</div>` : "";
+    document.getElementById("alerts").innerHTML = msgs.length ? msgs.slice(0,12)
+      .map(m => `<div class="alert">${m.click ?
+        `<a style="color:var(--text)" href="${esc(m.click)}" target="_blank">` : ""}
+        <b>${esc(m.title || "")}</b> — ${esc(m.message || "")}${m.click ? "</a>" : ""}
+        <div class="when">${ago(new Date(m.time*1000).toISOString())}</div></div>`)
+      .join("") : `<div class="empty">No alerts in the last 3 days — that's
+        normal. You'll know when it changes.</div>`;
+  } catch (e) { /* ntfy hiccup; keep last render */ }
+}
+refresh(); setInterval(refresh, 60000);
+</script></body></html>
