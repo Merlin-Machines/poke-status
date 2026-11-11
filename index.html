@@ -61,6 +61,10 @@
           margin-bottom:8px; display:flex; gap:12px; align-items:center; justify-content:space-between; }
   .card.watched { border-color:rgba(255,204,102,.5); box-shadow:inset 3px 0 0 var(--gold); }
   .card.instock { border-color:rgba(74,222,128,.45); }
+  .card.reported { border-color:rgba(124,196,255,.4); }
+  .go.check { background:rgba(124,196,255,.14); color:var(--blue); }
+  .kind { font-size:11px; font-weight:700; letter-spacing:.04em; text-transform:uppercase; }
+  .kind.store { color:var(--green); } .kind.rep { color:var(--blue); }
   .card .name { font-weight:650; font-size:15px; overflow-wrap:anywhere; }
   .meta { color:var(--dim); font-size:12.5px; margin-top:3px; overflow-wrap:anywhere; }
   .go { flex-shrink:0; text-decoration:none; font-weight:700; font-size:13px; padding:8px 12px; border-radius:10px;
@@ -119,12 +123,12 @@
 <div id="banner"></div>
 <div id="note"></div>
 <div class="tiles">
-  <a class="tile" id="t-stock" href="#instock-h"><b id="n-stock">–</b><span>in stock now</span></a>
+  <a class="tile" id="t-stock" href="#instock-h"><b id="n-stock">–</b><span>leads now</span></a>
   <a class="tile" id="t-alerts" href="#alerts-h"><b id="n-alerts">–</b><span>alerts · 3 days</span></a>
   <a class="tile" id="t-src" href="#sources-h"><b id="n-src">–</b><span>sources working</span></a>
 </div>
 
-<h2 id="instock-h">In stock now <small id="instock-note"></small></h2><div id="instock"></div>
+<h2 id="instock-h">Leads now <small id="instock-note"></small></h2><div id="instock"></div>
 <h2 id="alerts-h">Recent alerts</h2><div id="alerts"></div>
 <h2 id="sources-h">Sources <small id="sources-note"></small></h2><div id="sources"></div>
 <h2>Warehouse watch <small id="wh-note"></small></h2><div id="wh"></div>
@@ -148,6 +152,10 @@ const until = iso => { if (!iso) return ""; const m = Math.round(-mins(iso));
   return m <= 0 ? "now" : m < 60 ? "in " + m + " min" : new Date(iso).toLocaleTimeString([], {hour:"numeric", minute:"2-digit"}); };
 const money = p => p ? "$" + Number(p).toFixed(2) : "";
 const empty = text => `<div class="empty">${text}</div>`;
+// "[Target] Pokemon TCG: X (Restockd)" -> {retailer: "Target", title: "Pokemon TCG: X"}
+const split = name => { const m = /^\[([^\]]+)\]\s*(.*)$/.exec(name || "");
+  const title = (m ? m[2] : name || "").replace(/\s*\((Restockd|HotStock|Restock Buddy)[^)]*\)\s*$/i, "").replace(/^\[Reported online\]\s*/i, "");
+  return {retailer: m ? m[1] : "", title}; };
 
 let DATA = null, lastOk = 0, busy = false;
 
@@ -176,15 +184,20 @@ function renderStock() {
   const stock = DATA.products.filter(p => p.store !== "news" && p.in_stock)
     .sort((a, b) => (!!b.set - !!a.set) || (b.updated_at || "").localeCompare(a.updated_at || ""));
   $("n-stock").textContent = stock.length;
+  const firstParty = stock.filter(p => !p.reported).length;
   $("t-stock").className = "tile" + (stock.length ? " hot" : "");
-  $("instock-note").textContent = stock.length ? "tap to open the retailer" : "";
+  $("instock-note").textContent = stock.length ? firstParty + " store · " + (stock.length - firstParty) + " reported" : "";
   const live = (DATA.sources || []).filter(s => s.status === "ok" || s.status === "empty").length;
-  $("instock").innerHTML = stock.length ? stock.map(p => `
-    <div class="card instock${p.set ? " watched" : ""}"><div>
-      <div class="name">${esc(p.name)}${p.set ? `<span class="settag">${esc(p.set)}</span>` : ""}</div>
-      <div class="meta">${esc(p.store_label)}${p.price ? " · " + money(p.price) : ""} · seen ${ago(p.updated_at)}${p.reported ? " · reported, verify first" : ""}</div></div>
-      ${safe(p.url) ? `<a class="go" href="${safe(p.url)}" target="_blank" rel="noopener noreferrer">Open ↗</a>` : ""}
-    </div>`).join("")
+  $("instock").innerHTML = stock.length ? stock.map(p => { const n = split(p.name);
+    const where = n.retailer || p.store_label.replace(/\s*\(reported\)$/i, "");
+    const via = p.reported ? " · via " + p.store_label.replace(/\s*\(reported\)$/i, "") : "";
+    return `
+    <div class="card ${p.reported ? "reported" : "instock"}${p.set ? " watched" : ""}"><div>
+      <div class="kind ${p.reported ? "rep" : "store"}">${p.reported ? "Reported · verify first" : "Store stock"}</div>
+      <div class="name">${esc(n.title)}${p.set ? `<span class="settag">${esc(p.set)}</span>` : ""}</div>
+      <div class="meta">${esc(where)}${p.price ? " · " + money(p.price) : ""}${esc(via)} · ${ago(p.updated_at)}</div></div>
+      ${safe(p.url) ? `<a class="go${p.reported ? " check" : ""}" href="${safe(p.url)}" target="_blank" rel="noopener noreferrer">${p.reported ? "Check" : "Open"} ↗</a>` : ""}
+    </div>`; }).join("")
     : empty(`Nothing in stock right now. ${live} source${live === 1 ? "" : "s"} checked recently — you'll get a push alert the moment that changes.`);
 }
 
