@@ -42,11 +42,22 @@
   .urgent { background:rgba(255,93,93,.14); border:1px solid var(--red);
             border-radius:14px; padding:13px 15px; margin-bottom:10px;
             font-weight:700; color:var(--red); animation:pulse 1.2s infinite; }
+  .wh { background:var(--card); border:1px solid var(--line); border-radius:14px;
+        padding:13px 15px; margin-bottom:8px; }
+  .wh .t { font-weight:600; font-size:16px; }
+  .wh .row { display:flex; justify-content:space-between; gap:10px; font-size:14px;
+             margin-top:7px; }
+  .wh .row .r { white-space:nowrap; }
+  .wh details { color:var(--dim); font-size:13px; margin-top:8px; }
+  .wh summary { cursor:pointer; color:var(--dim); }
+  .ok { color:var(--green); font-weight:700; } .unk { color:var(--dim); }
+  .out { color:var(--red); }
 </style></head><body>
 <h1><span class="dot" id="dot"></span>Poké Restock — live</h1>
 <div class="sub">Read-only board. Alerts only — you make the purchase.
   Updated <span id="upd">…</span> · refreshes every 60 s</div>
 <div id="banner"></div>
+<h2>Warehouse watch · Costco &amp; Sam’s</h2><div id="wh"></div>
 <h2>In stock now</h2><div id="instock"></div>
 <h2>Recent alerts</h2><div id="alerts"></div>
 <h2>Restock news</h2><div id="news"></div>
@@ -70,6 +81,24 @@ async function refresh() {
       (mins > 30 ? " — tracker may be offline" : "");
     document.getElementById("dot").className = "dot" + (mins > 30 ? " stale" : "");
 
+
+    const shelfName = r => r.stock === "in_stock" ? "IN STOCK" : r.stock === "low_stock" ? "LOW STOCK"
+      : r.stock === "out_of_stock" ? "Out" : r.shelf === "no_record" ? "No shelf record" : "Unknown";
+    const shelfCls = r => ["in_stock","low_stock"].includes(r.stock) ? "ok"
+      : r.stock === "out_of_stock" ? "out" : "unk";
+    const wh = d.warehouse || [];
+    document.getElementById("wh").innerHTML = wh.length ? wh.map(w => { const many =
+      new Set(w.rows.map(r => r.label)).size > 1; return `
+      <div class="wh"><div class="t">${esc(w.title)}</div>
+        <div class="meta">${w.checked_at ? "Checked " + ago(w.checked_at) : "Not checked yet"}</div>
+        ${w.rows.map(r => `<div class="row"><span>${esc(r.location)} #${esc(r.club)}
+          ${many ? `<span class="meta">${esc(r.label || "")}</span>` : ""}</span>
+          <span class="r">${r.price ? "$" + Number(r.price).toFixed(2) + " · " : ""}<span
+          class="${shelfCls(r)}">${shelfName(r)}</span></span></div>`).join("")}
+        <details><summary>Evidence</summary><div>${esc(w.detail)}</div>
+          ${w.rows.map(r => `<div style="margin-top:4px">${esc(r.location)}: ${esc(r.detail)}</div>`).join("")}
+        </details></div>`; }).join("")
+      : `<div class="empty">No warehouse checks published yet.</div>`;
     const stock = d.products.filter(p => p.store !== "news" && p.in_stock);
     document.getElementById("instock").innerHTML = stock.length ? stock.map(p => `
       <div class="card${p.set ? " watched" : ""}"><div>
