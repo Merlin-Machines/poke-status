@@ -245,7 +245,7 @@ function renderWarehouse() {
     return `<details class="wh"${hit ? " open" : ""}><summary><div><div class="t">${esc(w.title)}</div>
         <div class="meta">${hit ? '<span class="ok">Stock reported</span> · ' : ""}${w.checked_at ? "checked " + ago(w.checked_at) : "not checked yet"}</div></div>
         <span class="chev">›</span></summary><div class="wh-body">
-      ${w.rows.map(r => `<div class="row"><span>${esc(r.location)} #${esc(r.club)}${many ? `<div class="meta">${esc(r.label || "")}</div>` : ""}</span>
+      ${w.rows.map(r => `<div class="row"><span>${esc(r.location)}${w.channel === "online" ? "" : " #" + esc(r.club)}${many ? `<div class="meta">${esc(r.label || "")}${r.retailer_item ? " · #" + esc(r.retailer_item) : ""}</div>` : ""}</span>
         <span class="r">${r.price ? money(r.price) + " · " : ""}<span class="${shelfCls(r)}">${shelfName(r)}</span></span></div>`).join("")}
       <div class="evidence">${esc(w.detail)}</div></div></details>`;
   }).join("") : empty("No warehouse checks published yet.");
